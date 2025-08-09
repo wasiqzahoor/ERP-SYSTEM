@@ -27,6 +27,12 @@ const userSchema = new mongoose.Schema({
         enum: ['admin', 'manager', 'employee'], // Define possible roles
         default: 'employee', // Default role for new users
     },
+    status: { 
+        type: String,
+        enum: ['pending', 'active', 'inactive', 'terminated'], // Possible statuses
+        default: 'pending', // New users start as 'pending'
+        required: true,
+    },
     createdAt: {
         type: Date,
         default: Date.now,
