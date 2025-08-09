@@ -1,26 +1,36 @@
-require('dotenv').config(); // This should be at the very top of your entry file!
+// server.js (no changes needed here from previous step)
+
+// Load environment variables from .env file
+require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const connectDB = require('./config/Database.js'); // Import the database connection function
+const connectDB = require('./config/Database.js'); // Import database connection
+const authRoutes = require('./routes/authRoutes'); // This line remains the same
+const userRoutes = require('./routes/userRoutes');
+
+
 
 const app = express();
-const PORT = process.env.PORT || 4003;
+const PORT = process.env.PORT || 5000;
 
 // --- Connect to Database ---
-connectDB(); // Call the function to connect to MongoDB
+connectDB();
 
 // --- Middleware ---
-// Enable CORS for all routes (adjust as needed for specific origins in production)
 app.use(cors());
-
-// Parse JSON request bodies
 app.use(express.json());
 
-// --- Basic Route (for testing) ---
+// --- Routes ---
 app.get('/', (req, res) => {
     res.send('ERP Backend is running!');
 });
+
+app.use('/api/auth', authRoutes); // This line remains the same
+app.use('/api/users', userRoutes); 
+
+
+
 
 // --- Start the server ---
 app.listen(PORT, () => {
