@@ -2,9 +2,6 @@
 
 const User = require('../models/userModel');
 
-// @desc    Create a new staff user (Admin or Manager) by an Admin
-// @route   POST /api/users/staff
-// @access  Private (Admin only)
 exports.createStaffUser = async (req, res) => {
     const { username, email, password, role } = req.body;
 
@@ -59,10 +56,6 @@ exports.createStaffUser = async (req, res) => {
     }
 };
 
-
-// @desc    Get all users (Admin can see all, Manager can see employees & managers)
-// @route   GET /api/users
-// @access  Private (Admin, Manager)
 exports.getAllUsers = async (req, res) => {
     try {
         let query = {};
@@ -79,9 +72,6 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
-// @desc    Get a single user by ID
-// @route   GET /api/users/:id
-// @access  Private (Admin, Manager can view employees/managers, User can view self)
 exports.getUserById = async (req, res) => {
     try {
         const user = await User.findById(req.params.id).select('-password -__v');
@@ -109,10 +99,6 @@ exports.getUserById = async (req, res) => {
     }
 };
 
-
-// @desc    Update a user's status by Admin/Manager
-// @route   PUT /api/users/:id/status
-// @access  Private (Admin, Manager)
 exports.updateUserStatus = async (req, res) => {
     const { status } = req.body;
     const { id } = req.params;
@@ -169,9 +155,6 @@ exports.updateUserStatus = async (req, res) => {
     }
 };
 
-// @desc    Update a user's role by Admin
-// @route   PUT /api/users/:id/role
-// @access  Private (Admin only)
 exports.updateUserRole = async (req, res) => {
     const { role } = req.body;
     const { id } = req.params;
@@ -218,5 +201,15 @@ exports.updateUserRole = async (req, res) => {
             return res.status(400).json({ message: 'Invalid user ID format.' });
         }
         res.status(500).json({ message: 'Server error updating user role.' });
+    }
+};
+
+exports.getPendingUsers = async (req, res) => {
+    try {
+        const pendingUsers = await User.find({ status: 'pending' }).select('-password -__v').sort({ createdAt: -1 });
+        res.status(200).json({ users: pendingUsers });
+    } catch (error) {
+        console.error('Error fetching pending users:', error.message);
+        res.status(500).json({ message: 'Server error fetching pending users.' });
     }
 };

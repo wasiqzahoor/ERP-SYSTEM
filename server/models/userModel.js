@@ -29,15 +29,37 @@ const userSchema = new mongoose.Schema({
     },
     status: { 
         type: String,
-        enum: ['pending', 'active', 'inactive', 'terminated'], // Possible statuses
-        default: 'pending', // New users start as 'pending'
+        enum: ['unverified', 'pending', 'active', 'inactive', 'terminated'], // Possible statuses
+        default: 'unverified', // New users start as 'pending'
         required: true,
+    },
+     verificationCode: {
+        type: String,
+        default: null,
+    },
+    verificationCodeExpires: {
+        type: Date,
+        default: null,
     },
     createdAt: {
         type: Date,
         default: Date.now,
     },
 });
+
+userSchema.methods.getVerificationCode = function() {
+    // Generate a 6-digit code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // We don't need to hash a simple 6-digit code for this use case,
+    // but for higher security (like password resets), hashing is a must.
+    this.verificationCode = code;
+
+    // Set expiration to 10 minutes from now
+    this.verificationCodeExpires = Date.now() + 10 * 60 * 1000; 
+    
+    return code;
+};
 
 // --- Middleware to hash password before saving ---
 userSchema.pre('save', async function (next) {
