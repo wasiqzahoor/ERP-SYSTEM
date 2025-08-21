@@ -175,13 +175,7 @@ const Navbar = () => {
                       >
                         Attendance Tracking
                       </NavLink>
-                      <NavLink
-                        to="/department"
-                        className="block px-4 py-2 text-sm hover:bg-indigo-50"
-                        onClick={() => setHrmDropdownOpen(false)}
-                      >
-                        Departments
-                      </NavLink>
+                      
                       {userHasRole('admin') && (
                         <NavLink 
                           to="/settings/roles" 
@@ -433,7 +427,14 @@ const Navbar = () => {
                                 >
                                   Attendance Tracking
                                 </NavLink>
-                                
+                                <NavLink
+                                  to="/departments"
+                                  style={navLinkStyles}
+                                  className="block px-4 py-2 rounded-md text-base font-medium transition-colors duration-300"
+                                  onClick={() => setMobileMenuOpen(false)}
+                                >
+                                  Departments
+                                </NavLink>
                                 {userHasRole('admin') && (
                                   <NavLink 
                                     to="/settings/roles" 

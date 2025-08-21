@@ -3,24 +3,26 @@ const User = require('../models/userModel');
 
 exports.getAllDepartments = async (req, res) => {
     try {
-        const user = req.user; 
-        const populatedUser = await User.findById(user._id).populate('roles');
+        // Step 1: Tenant ke saare departments fetch karein
+        const departments = await Department.find({ tenant: req.tenant._id }).lean();
+
+        // Step 2: Har department ke liye uske users ka count aur kuch users ki details fetch karein
+        const departmentsWithDetails = await Promise.all(
+            departments.map(async (dept) => {
+                const [userCount, usersInDept] = await Promise.all([
+                    User.countDocuments({ department: dept._id }),
+                    User.find({ department: dept._id }).select('avatar username').limit(5) // Pehle 5 users
+                ]);
+
+                return {
+                    ...dept,
+                    userCount,
+                    users: usersInDept,
+                };
+            })
+        );
         
-        const userHasRole = (roleName) => {
-            return populatedUser.roles.some(role => role.name.toLowerCase() === roleName.toLowerCase());
-        };
-
-        let query = { tenant: req.tenant._id };
-
-        if (!user.isSuperAdmin && !userHasRole('admin') && user.department) {
-            
-            query._id = user.department;
-        }
-
-        const departments = await Department.find(query);
-        
-        res.status(200).json(departments);
-
+        res.status(200).json(departmentsWithDetails);
     } catch (error) {
         console.error('Error fetching departments:', error.message);
         res.status(500).json({ message: 'Server error fetching departments.' });
