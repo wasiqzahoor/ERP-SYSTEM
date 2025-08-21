@@ -175,7 +175,13 @@ const Navbar = () => {
                       >
                         Attendance Tracking
                       </NavLink>
-                      
+                      <NavLink
+                        to="/department"
+                        className="block px-4 py-2 text-sm hover:bg-indigo-50"
+                        onClick={() => setHrmDropdownOpen(false)}
+                      >
+                        Departments
+                      </NavLink>
                       {userHasRole('admin') && (
                         <NavLink 
                           to="/settings/roles" 
