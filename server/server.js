@@ -18,7 +18,7 @@ const server = http.createServer(app);
 // --- Socket.io ko HTTP server ke saath jorein ---
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:5173", // Aapke frontend ka address
+        origin: ["http://localhost:5173", "https://erp-system-dusky.vercel.app"], // Aapke frontend ka address
         methods: ["GET", "POST", "PATCH", "DELETE", "PUT"] // Tamam zaroori methods shamil karein
     }
 });
