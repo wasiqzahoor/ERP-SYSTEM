@@ -1,11 +1,16 @@
 // server/controllers/authController.js
 
 const User = require('../models/userModel');
+const Tenant = require('../models/tenantModel');
+const Notification = require('../models/notificationModel');
+const Role = require('../models/roleModel');
+const speakeasy = require('speakeasy'); // Assume speakeasy is installed and imported
+const qrcode = require('qrcode');
 const jwt = require('jsonwebtoken');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('../config/emailService');
+const {  sendPasswordResetEmail } = require('../config/emailService');
 const generateToken = (id, role) => {
     return jwt.sign({ id, role }, process.env.JWT_SECRET, {
-        expiresIn: '1h',
+        expiresIn: '7d',
     });
 };
 
@@ -54,11 +59,8 @@ exports.registerUser = async (req, res) => {
     }
 };
 
-
-// @route   POST /api/auth/login
-// @access  Public
 exports.authUser = async (req, res) => {
-    const { email, password } = req.body;
+    const { email, password, twoFactorToken } = req.body;
 
     if (!email || !password) {
         return res.status(400).json({ message: 'Please enter all fields.' });
@@ -70,7 +72,7 @@ exports.authUser = async (req, res) => {
             return res.status(400).json({ message: 'Invalid credentials.' });
         }
 
-        // <--- IMPORTANT: Check if account is active before allowing login
+        // Check if account is active before allowing login
         if (user.status !== 'active') {
             return res.status(403).json({ message: `Account is ${user.status}. Please contact an administrator for activation.` });
         }
@@ -80,6 +82,29 @@ exports.authUser = async (req, res) => {
             return res.status(400).json({ message: 'Invalid credentials.' });
         }
 
+        // --- 2FA Logic Integration ---
+        // If 2FA is enabled for the user
+        if (user.twoFactorEnabled) {
+            // Check if a 2FA token was provided in the request
+            if (!twoFactorToken) {
+                // If no token is provided, tell the client it's required
+                return res.status(200).json({ twoFactorRequired: true });
+            }
+
+            // Verify the provided 2FA token
+            const verified = speakeasy.totp.verify({
+                secret: user.twoFactorSecret,
+                encoding: 'base32',
+                token: twoFactorToken,
+            });
+
+            if (!verified) {
+                return res.status(401).json({ message: 'Invalid 2FA token' });
+            }
+        }
+        // --- End of 2FA Logic ---
+
+        // If password is correct and 2FA (if enabled) is verified, generate and send the token
         const token = generateToken(user._id, user.role);
 
         res.json({
@@ -89,7 +114,7 @@ exports.authUser = async (req, res) => {
                 username: user.username,
                 email: user.email,
                 role: user.role,
-                status: user.status, // Status bhi login response mein bhejenge
+                status: user.status,
             },
             token,
         });
@@ -109,70 +134,6 @@ exports.getUserStatus = async (req, res) => {
         res.status(200).json({ status: user.status, username: user.username });
     } catch (error) {
         console.error('Error fetching user status:', error.message);
-        res.status(500).json({ message: 'Server error.' });
-    }
-};
-
-exports.sendVerificationCode = async (req, res) => {
-    const { username, email, password } = req.body;
-    if (!username || !email || !password) {
-        return res.status(400).json({ message: 'Please provide all fields.' });
-    }
-
-    try {
-        let user = await User.findOne({ email });
-        if (user && user.status !== 'unverified') {
-            return res.status(400).json({ message: 'Email is already registered and verified.' });
-        }
-        
-        // If user exists but is unverified, update them. Otherwise, create new.
-        if (!user) {
-            user = new User({ username, email, password });
-        } else {
-            user.username = username;
-            user.password = password; // This will trigger pre-save hook to re-hash
-        }
-
-        const verificationCode = user.getVerificationCode();
-        await user.save();
-        
-        // Send email
-        await sendVerificationEmail(user.email, verificationCode);
-
-        res.status(200).json({ message: `A verification code has been sent to ${user.email}.` });
-
-    } catch (error) {
-        console.error('Error sending verification:', error);
-        res.status(500).json({ message: 'Server error.' });
-    }
-};
-
-exports.verifyAndRegister = async (req, res) => {
-    const { email, code } = req.body;
-
-    try {
-        const user = await User.findOne({ 
-            email,
-            verificationCode: code,
-            verificationCodeExpires: { $gt: Date.now() }, // Check if not expired
-        });
-
-        if (!user) {
-            return res.status(400).json({ message: 'Invalid verification code or code has expired.' });
-        }
-
-        user.status = 'pending'; // <-- Set status to pending
-        user.verificationCode = undefined; // Clear the code
-        user.verificationCodeExpires = undefined; // Clear expiry
-        await user.save();
-
-        res.status(201).json({
-            message: 'Email verified successfully. Your account is now pending approval by an admin.',
-            user: { id: user._id, username: user.username, email: user.email },
-        });
-
-    } catch (error) {
-        console.error('Error verifying code:', error);
         res.status(500).json({ message: 'Server error.' });
     }
 };
@@ -222,5 +183,31 @@ exports.resetPassword = async (req, res) => {
     } catch (error) {
         console.error('Reset password error:', error);
         res.status(500).json({ message: 'Server error.' });
+    }
+};
+
+exports.generateTwoFactorSecret = async (req, res) => {
+    const secret = speakeasy.generateSecret({ length: 20, name: 'Your ERP App' });
+    // User model mein secret.base32 save karein
+    req.user.twoFactorSecret = secret.base32;
+    await req.user.save();
+    qrcode.toDataURL(secret.otpauth_url, (err, data_url) => {
+        res.json({ qrCodeUrl: data_url });
+    });
+};
+
+exports.verifyTwoFactorToken = async (req, res) => {
+    const { token } = req.body;
+    const verified = speakeasy.totp.verify({
+        secret: req.user.twoFactorSecret,
+        encoding: 'base32',
+        token,
+    });
+    if (verified) {
+        req.user.twoFactorEnabled = true;
+        await req.user.save();
+        res.status(200).json({ message: '2FA enabled successfully.' });
+    } else {
+        res.status(400).json({ message: 'Invalid 2FA token.' });
     }
 };

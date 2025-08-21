@@ -1,50 +1,121 @@
 // server/middleware/authMiddleware.js
-
 const jwt = require('jsonwebtoken');
-const User = require('../models/userModel'); // Import User model to fetch user if needed
+const User = require('../models/userModel');
+const Tenant = require('../models/tenantModel'); // **IMPORTANT: Tenant model import kariye**
+const Role = require('../models/roleModel');
+const Permission = require('../models/permissionModel');
 
-// --- Authentication Middleware ---
+// `protect` middleware - JWT verify aur user/tenant set karta hai
 const protect = async (req, res, next) => {
     let token;
-
-    // Check if token exists in headers
+    
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
         try {
-            // Get token from header (e.g., "Bearer YOUR_TOKEN_HERE")
             token = req.headers.authorization.split(' ')[1];
-
-            // Verify token
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-            // Attach user data to request object (excluding password)
-            // We fetch the user from DB to ensure they still exist and get the latest info
-            req.user = await User.findById(decoded.id).select('-password');
-            if (!req.user) {
+            
+            // User ko fetch kariye with tenant populate
+            const user = await User.findById(decoded.id)
+                .populate('tenant') // **CRITICAL: Tenant populate kariye**
+                .select('-password');
+                
+            if (!user) {
                 return res.status(401).json({ message: 'Not authorized, user not found' });
             }
 
-            next(); // Proceed to the next middleware/route handler
+            // **CRITICAL FIX: Tenant set kariye req me**
+            if (user.tenant) {
+                req.tenant = user.tenant; // Tenant object set kariye
+                console.log('Tenant set successfully:', user.tenant._id);
+            } else {
+                console.log('User has no tenant assigned:', user._id);
+                return res.status(400).json({ message: 'User has no tenant assigned' });
+            }
+
+            req.user = user;
+            next();
+            
         } catch (error) {
-            console.error('Token verification error:', error.message);
+            console.error('Token verification error:', error);
             return res.status(401).json({ message: 'Not authorized, token failed' });
         }
-    }
-
-    if (!token) {
+    } else {
         return res.status(401).json({ message: 'Not authorized, no token' });
     }
 };
 
-// --- Authorization Middleware / Helper Function ---
-// This function takes an array of allowed roles
-const authorizeRoles = (...roles) => {
-    return (req, res, next) => {
-        // req.user is set by the 'protect' middleware
-        if (!req.user || !roles.includes(req.user.role)) {
-            return res.status(403).json({ message: `User role (${req.user ? req.user.role : 'none'}) is not authorized to access this route` });
+// Permission checking middleware
+const checkPermission = (requiredPermissionKey) => {
+    return async (req, res, next) => {
+        try {
+            // **FIX: req.user.id instead of req.user._id use kariye**
+            const userId = req.user._id || req.user.id;
+            
+            const user = await User.findById(userId).populate({
+                path: 'roles',
+                populate: { path: 'permissions' }
+            }).populate('permissionOverrides.permission');
+            
+            if (!user) {
+                return res.status(401).json({ message: 'Not authorized.' });
+            }
+
+            // Super admin check (if you have this field)
+            if (user.isSuperAdmin) {
+                return next();
+            }
+
+            // 1. Check user-specific overrides first
+            const override = user.permissionOverrides.find(o => 
+                o.permission && o.permission.key === requiredPermissionKey
+            );
+            
+            if (override) {
+                if (override.hasAccess) {
+                    return next(); // Override granted access
+                } else {
+                    return res.status(403).json({ 
+                        message: `Forbidden: Your access to this resource (${requiredPermissionKey}) has been specifically revoked.` 
+                    });
+                }
+            }
+
+            // 2. Check role permissions if no override
+            let userPermissions = new Set();
+            
+            if (user.roles && user.roles.length > 0) {
+                user.roles.forEach(role => {
+                    if (role.permissions && role.permissions.length > 0) {
+                        role.permissions.forEach(p => {
+                            if (p && p.key) {
+                                userPermissions.add(p.key);
+                            }
+                        });
+                    }
+                });
+            }
+
+            if (userPermissions.has(requiredPermissionKey)) {
+                next(); // Role granted access
+            } else {
+                return res.status(403).json({ 
+                    message: `Forbidden: You do not have the required permission (${requiredPermissionKey}).` 
+                });
+            }
+
+        } catch (error) {
+            console.error('Permission check error:', error);
+            res.status(500).json({ message: 'Server error during permission check.' });
         }
-        next(); // User has the required role, proceed
     };
 };
 
-module.exports = { protect, authorizeRoles };
+const isSuperAdmin = (req, res, next) => {
+    if (req.user && req.user.isSuperAdmin) {
+        next();
+    } else {
+        res.status(403).json({ message: 'Forbidden: Super Admin access required.' });
+    }
+};
+
+module.exports = { protect, checkPermission, isSuperAdmin };

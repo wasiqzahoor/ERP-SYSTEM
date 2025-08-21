@@ -1,8 +1,11 @@
 import axios from 'axios';
 
+// Log the API Base URL from .env
+console.log("API Base URL from .env:", import.meta.env.VITE_API_BASE_URL);
+
 // Create a new instance of axios
 const api = axios.create({
-    baseURL: 'http://localhost:4002', // <-- Your backend's base URL
+    baseURL: import.meta.env.VITE_API_BASE_URL, // <-- Your backend's base URL
 });
 
 // We can also intercept requests to automatically add the token

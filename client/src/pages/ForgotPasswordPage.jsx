@@ -5,7 +5,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import api from '../api';
 import { motion } from 'framer-motion';
 import { FiMail, FiKey, FiLock } from 'react-icons/fi';
-
+import { toast } from 'react-toastify'; 
 const ForgotPasswordPage = () => {
     const [step, setStep] = useState(1);
     const [email, setEmail] = useState('');
@@ -25,7 +25,7 @@ const ForgotPasswordPage = () => {
             setMessage(res.data.message);
             setStep(2);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to send code.');
+            toast.error(err.response?.data?.message || 'Failed to send code.');
         } finally {
             setLoading(false);
         }
@@ -35,7 +35,7 @@ const ForgotPasswordPage = () => {
         e.preventDefault();
         setError('');
         if (formData.password.length < 6) {
-            setError('Password must be at least 6 characters long.');
+            toast.error('Password must be at least 6 characters long.');
             return;
         }
         setLoading(true);
@@ -44,7 +44,7 @@ const ForgotPasswordPage = () => {
             setMessage(res.data.message);
             setTimeout(() => navigate('/login'), 3000);
         } catch (err) {
-            setError(err.response?.data?.message || 'Password reset failed.');
+            toast.error(err.response?.data?.message || 'Password reset failed.');
         } finally {
             setLoading(false);
         }
